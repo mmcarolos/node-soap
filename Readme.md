@@ -46,7 +46,7 @@ Within the options object you may provide an `endpoint` property in case you wan
                   return {
                       name: args.name
                   };
-              }
+              },
 
               // This is how to define an asynchronous function.
               MyAsyncFunction: function(args, callback) {
@@ -54,6 +54,13 @@ Within the options object you may provide an `endpoint` property in case you wan
                   callback({
                       name: args.name
                   })
+              },
+
+              // This is how to receive incoming headers
+              HeadersAwareFunction: function(args, cb, headers) {
+                  return {
+                      name: headers.Token
+                  };
               }
           }
       }
@@ -79,6 +86,66 @@ along with data.
     // type is 'received' or 'replied'
   };
 ```
+
+### Server Events
+
+Server instances emit the following events:
+
+* request - Emitted for every received messages.
+  The signature of the callback is `function(request, methodName)`.
+* headers - Emitted when the SOAP Headers are not empty.
+  The signature of the callback is `function(headers, methodName)`.
+
+The sequence order of the calls is `request`, `headers` and then the dedicated
+service method.
+
+### SOAP Fault
+
+A service method can reply with a SOAP Fault to a client by `throw`ing an
+object with a `Fault` property.
+
+``` javascript
+  throw {
+    Fault: {
+      Code: {
+        Value: "soap:Sender",
+        Subcode: { value: "rpc:BadArguments" }
+      },
+      Reason: { Text: "Processing Error" }
+    }
+  };
+```
+
+### SOAP Headers
+
+A service method can look at the SOAP headers by providing a 3rd arguments.
+
+``` javascript
+  {
+      HeadersAwareFunction: function(args, cb, headers) {
+          return {
+              name: headers.Token
+          };
+      }
+  }
+```
+
+It is also possible to subscribe to the 'headers' event.
+The event is triggered before the service method is called, and only when the
+SOAP Headers are not empty.
+
+``` javascript
+  server = soap.listen(...)
+  server.on('headers', function(headers, methodName) {
+    // It is possible to change the value of the headers
+    // before they are handed to the service method.
+    // It is also possible to throw a SOAP Fault
+  });
+```
+
+First parameter is the Headers object;
+second parameter is the name of the SOAP method that will called
+(in case you need to handle the headers differently based on the method).
 
 ### server security example using PasswordDigest
 
@@ -173,8 +240,10 @@ as default request options to the constructor:
 ### Client.*method*(args, callback) - call *method* on the SOAP service.
 
 ``` javascript
-  client.MyFunction({name: 'value'}, function(err, result) {
+  client.MyFunction({name: 'value'}, function(err, result, raw, soapHeader) {
       // result is a javascript object
+      // raw is the raw response
+      // soapHeader is the response soap header as a javascript object
   })
 ```
 ### Client.*service*.*port*.*method*(args, callback[, options]) - call a *method* using a specific *service* and *port*
@@ -204,6 +273,20 @@ as default request options to the constructor:
  - `xmlns`          URI
 
 ### Client.*lastRequest* - the property that contains last full soap request for client logging
+
+### Client Events
+Client instances emit the following events:
+
+* request - Emitted before a request is sent. The event handler receives the 
+entire Soap request (Envelope) including headers.
+* message - Emitted before a request is sent. The event handler receives the 
+Soap body contents. Useful if you don't want to log /store Soap headers.
+* soapError - Emitted when an erroneous response is received.
+  Useful if you want to globally log errors.
+* response - Emitted after a response is received. The event handler receives
+the entire response body. This is emitted for all responses (both success and
+errors).
+
 
 ## WSSecurity
 
